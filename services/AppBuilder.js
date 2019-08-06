@@ -11,6 +11,8 @@ const Http = require("./httpService/AxiosService");
 const CouchBaseApi = require("./couchbaseService/CouchBaseApi");
 const S3 = require("./awsService/S3Service");
 const SQS = require("./awsService/SQSService");
+const SNS = require("./awsService/SNSService");
+const CloudWatchLogs = require("./awsService/CloudWatchLogsService");
 
 // Use AppBuilder to build and inject services and data to your Microservice Modules.
 // The default implmentation is for API Gateway Events, if you like to support more events just extend it and enjoy.
@@ -77,6 +79,19 @@ module.exports = class AppBuilder {
       this.services.retry = new Retry(this.services.logger);
   }
 
+  addCouchbaseService() {
+    if (!this.services.couchbase) {
+      this.services.couchbase = new CouchBaseApi(
+        this.services.config.COUCHBASE,
+        this.services.logger
+      );
+    }
+  }
+
+  addAxiosService() {
+    if (!this.services.http) this.services.http = new Http();
+  }
+
   addS3Service() {
     if (!this.services.s3) {
       this.services.s3 = new S3(this.services.config.AWS, this.services.logger);
@@ -92,19 +107,54 @@ module.exports = class AppBuilder {
     }
   }
 
-  addDynamoDBService() {}
-
-  addCouchbaseService() {
-    if (!this.services.couchbase) {
-      this.services.couchbase = new CouchBaseApi(
-        this.services.config.COUCHBASE,
+  addSNSService() {
+    if (!this.services.sns) {
+      this.services.sns = new SNS(
+        this.services.config.AWS,
         this.services.logger
       );
     }
   }
 
-  addAxiosService() {
-    if (!this.services.http) this.services.http = new Http();
+  addCloudWatchLogsService() {
+    if (!this.services.cloudwatchLogs) {
+      this.services.cloudwatchLogs = new CloudWatchLogs(
+        this.services.config.AWS,
+        this.services.logger
+      );
+    }
+  }
+
+  decorateLoggerWithNotifcation() {
+    if (!this.services.logger) this.services.logger = this.addLoggerService();
+
+    if (!this.services.logger.logExceptionAndNotify) {
+      if (!this.services.sns) {
+        this.addSNSService();
+      }
+      if (!this.services.cloudwatchLogs) this.addCloudWatchLogsService();
+
+      this.services.logger.logExceptionAndNotify = async (
+        err,
+        subject = "",
+        params = {},
+        topicARN,
+        logGroupName,
+        logStream
+      ) => {
+        this.services.logger.logException(err, subject, params);
+
+        const msgStr = JSON.stringify(this.services.logger.logMessage);
+
+        await this.services.cloudwatchLogs.putLogsToCommonLogGroup(
+          msgStr,
+          logGroupName,
+          logStream
+        );
+
+        await this.services.sns.sendMessageToTopic(msgStr, topicARN);
+      };
+    }
   }
 
   constructData() {

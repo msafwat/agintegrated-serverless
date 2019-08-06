@@ -3,21 +3,33 @@
 const AWS = require("aws-sdk");
 
 module.exports = class SNSService {
-  constructor(config) {
-    this.config = config;
+  constructor(config, logger) {
+    // Set AWS Account Credentials.
+    const AWSconfig = {
+      accessKeyId: config.ACCOUNT_DATA.ACCESS_KEY_ID,
+      secretAccessKey: config.ACCOUNT_DATA.SECRET_ACCESS_KEY,
+      region: config.ACCOUNT_DATA.REGION
+    };
+
+    AWS.config.update({
+      credentials: new AWS.Credentials(AWSconfig)
+    });
+
+    AWS.config.setPromisesDependency();
 
     this.sns = new AWS.SNS({
       apiVersion: "2010-03-31",
-      region: "us-east-1"
+      region: config.ACCOUNT_DATA.REGION
     });
+    this.logger = logger;
   }
 
-  sendMessageToTopic = async (logMessage, topicARN) => {
+  async sendMessageToTopic(message, topicARN) {
     const params = {
       TargetArn: topicARN,
-      Message: logMessage
+      Message: message
     };
 
-    return await sns.publish(params).promise();
-  };
+    return await this.sns.publish(params).promise();
+  }
 };

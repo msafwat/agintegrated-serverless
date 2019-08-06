@@ -4,7 +4,7 @@ const { sendUsersToSQS } = require("./onsite-users/send-to-sqs");
 const FailureError = require("./errors/FailureError");
 
 exports.handler = async (services, data) => {
-  const { logger, res } = services;
+  const { config, logger, res } = services;
 
   try {
     //Step-01 :Validate needed parameters in event
@@ -25,12 +25,14 @@ exports.handler = async (services, data) => {
     return res.ok(JSON.stringify(users || {}));
   } catch (error) {
     if (error instanceof FailureError) {
-      // await Logger.failure(
-      //   STEP,
-      //   JSON.stringify({ error: error.message, stack: error.stack }),
-      //   funcParams
-      // );
-      logger.logException(error);
+      logger.logExceptionAndNotify(
+        error,
+        "OnSiteUsers",
+        data,
+        config.snsConfig.snsTopicARN,
+        config.cloudwatchConfig.commonLogGroupName,
+        config.cloudwatchConfig.onsiteUsersLogStream
+      );
     } else {
       logger.logException(error);
     }

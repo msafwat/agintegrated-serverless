@@ -9,8 +9,8 @@ module.exports = {
   },
   AWS: {
     ACCOUNT_DATA: {
-      ACCESS_KEY_ID: "AKIA6JHUVPVPTIDEDNMY", //process.env.AWS_ACCOUNT_DATA_ACCESS_KEY_ID,
-      SECRET_ACCESS_KEY: "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", //process.env.AWS_ACCOUNT_DATA_SECRET_ACCESS_KEY,
+      ACCESS_KEY_ID: "AKIA6JHUVPVPYX2MH74O", //process.env.AWS_ACCOUNT_DATA_ACCESS_KEY_ID,
+      SECRET_ACCESS_KEY: "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", //process.env.AWS_ACCOUNT_DATA_SECRET_ACCESS_KEY,
       REGION: "us-east-1"
     }
   },

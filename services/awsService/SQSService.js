@@ -15,7 +15,11 @@ module.exports = class SQSService {
 
     AWS.config.setPromisesDependency();
 
-    this.sqs = new AWS.SQS({ apiVersion: "2012-11-05", region: "us-east-1" });
+    this.sqs = new AWS.SQS({
+      apiVersion: "2012-11-05",
+      region: config.ACCOUNT_DATA.REGION
+    });
+
     this.logger = logger;
   }
 
