@@ -1,0 +1,153 @@
+"use strict";
+
+const couchbase = require("couchbase");
+const { policies, couchbaseConfig } = require("../../configuration/config");
+const queryTypes = {
+  Get: "Get",
+  Upsert: "Upsert",
+  Query: "Query",
+  Remove: "Remove"
+};
+
+let N1qlQuery = couchbase.N1qlQuery;
+let cluster;
+let bucket;
+
+async function configureCouchbase() {
+  cluster = new couchbase.Cluster(couchbaseConfig.URL);
+  await cluster.authenticate(
+    couchbaseConfig.clusterUserName,
+    couchbaseConfig.clusterPassword
+  );
+  bucket = await cluster.openBucket(couchbaseConfig.bucketName, "");
+
+  bucket.on("error", error => {
+    console.log(error);
+  });
+}
+
+async function closeCouchbase() {
+  await bucket.disconnect();
+  console.log(`End executeQuery/bucket.disconnect`);
+}
+
+function executeQuery(queryAsString) {
+  let query = N1qlQuery.fromString(queryAsString);
+
+  return new Promise((resolve, reject) => {
+    bucket.query(query, function(err, result) {
+      if (err) reject(err);
+
+      resolve(result);
+    });
+  });
+}
+
+async function executeQueryWithRetry(
+  { queryType, query, key, value },
+  retry_policy = policies.defaultCouchBaseRetryPolicy
+) {
+  let timeout = retry_policy.timeout;
+  let retries_number = retry_policy.retry;
+  let interval = retry_policy.interval;
+
+  let non_retryable_error = [];
+  let finalResult;
+  bucket.operationTimeout = timeout;
+
+  for (let i = 0; i < retries_number; i++) {
+    try {
+      switch (queryType) {
+        case "Query":
+          console.log(`Start couchbase run query ${query}`);
+          finalResult = await executeQuery(query);
+          console.log(`End couchbase run query ${query}`);
+          break;
+        case "Get":
+          console.log(`Start couchbase get document key: ${key}`);
+          finalResult = JSON.parse((await get(key)).value);
+          console.log(`End couchbase get document ${key}`);
+          break;
+        case "Upsert":
+          console.log(
+            `Start couchbase upsert document key: ${key} value: ${value}`
+          );
+          finalResult = await upsert(key, value);
+          console.log(`End couchbase upsert document key: ${key}`);
+          break;
+        case "Remove":
+          console.log(`Start couchbase Remove document key: ${key}`);
+          finalResult = await remove(key);
+          console.log(`Start couchbase Remove document key: ${key}`);
+          break;
+      }
+
+      if (finalResult) return finalResult;
+    } catch (error) {
+      console.log(
+        `error: Exception Happened in retry number ${i +
+          1} while try to execute query ${query}`,
+        `Error: ${error.message}`
+      );
+
+      if (error.message in non_retryable_error) return result;
+
+      //Throw exception for last error
+      if (i === retries_number - 1) {
+        throw error;
+      }
+    }
+  }
+}
+
+function get(key) {
+  return new Promise((resolve, reject) => {
+    bucket.get(key, (err, result) => {
+      if (err) reject(err);
+      resolve(result);
+    });
+  });
+}
+
+//returns null if document not found
+function getDocumentById(documentId) {
+  return new Promise((resolve, reject) => {
+    bucket.get(documentId, (err, result) => {
+      //bucket.disconnect();
+      if (err) {
+        if (err.code == couchbase.errors.keyNotFound) {
+          resolve(null);
+        }
+        reject(err);
+      } else {
+        resolve(result);
+      }
+    });
+  });
+}
+
+function upsert(key, value) {
+  return new Promise((resolve, reject) => {
+    bucket.upsert(key, value, (err, result) => {
+      if (err) reject(err);
+      resolve(result);
+    });
+  });
+}
+
+function remove(key) {
+  return new Promise((resolve, reject) => {
+    bucket.remove(key, (err, result) => {
+      if (err) reject(err);
+      resolve(result);
+    });
+  });
+}
+
+module.exports = {
+  queryTypes,
+  configureCouchbase,
+  closeCouchbase,
+  executeQueryWithRetry,
+  getDocumentById
+};

@@ -1,0 +1,313 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  FunctionName: 
+    Type: String
+  DQ2Arn: 
+    Type: String
+  DQ3Arn: 
+    Type: String
+  DQ4Arn: 
+    Type: String
+  DQ2Name:
+    Type: String
+  DQ3Name:
+    Type: String
+  DQ4Name:
+    Type: String
+  SNSName:
+    Type: String
+  SNSArn:
+    Type: String
+  LogGroupArn:
+    Type: String
+  Stage:
+    Type: String
+  CBUN:
+    Type: String
+  CBPW:
+    Type: String
+  MasterKey:
+    Type: String
+  Secret:
+    Type: String
+
+Resources:
+  LambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Ref FunctionName
+      Role: !GetAtt [LambdaRole, Arn]
+      Handler: index.handler
+      Runtime: nodejs10.x
+      CodeUri: ./dist/
+      Timeout: 10
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Stage
+          CouchBaseUserName: !Ref CBUN
+          CouchBasePassword: !Ref CBPW
+          AgIntegratedMasterKey: !Ref MasterKey
+          AgIntegratedSecret: !Ref Secret
+      Events:
+        MySQSEvent2:
+          Type: SQS
+          Properties:
+            Queue: !Ref DQ2Arn
+            BatchSize: 10
+        MySQSEvent3:
+          Type: SQS
+          Properties:
+            Queue: !Ref DQ3Arn
+            BatchSize: 10
+        MySQSEvent4:
+          Type: SQS
+          Properties:
+            Queue: !Ref DQ4Arn
+            BatchSize: 10 
+
+  LambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+        # RoleName: !Join
+        #   - '-'
+        #   - - !Ref FunctionName
+        #     - 'Execution-Role'
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                  - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+        Path: /
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        Policies:
+          - PolicyName: !Join
+            - '-'
+            - - !Ref FunctionName
+              - 'Execution-Role'
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+              - Effect: Allow
+                Action:
+                  - 'sns:Publish'
+                Resource: !Ref SNSArn 
+              - Effect: Allow
+                Action:
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogStreams'
+                Resource: !Ref LogGroupArn
+              - Effect: Allow
+                Action:
+                  - 'sqs:*'
+                Resource: !Ref DQ2Arn
+              - Effect: Allow
+                Action:
+                  - 'sqs:*'
+                Resource: !Ref DQ3Arn
+              - Effect: Allow
+                Action:
+                  - 'sqs:*'
+                Resource: !Ref DQ4Arn
+
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties: 
+      DashboardName: !Join
+        - '-'
+        - 
+            - !Ref FunctionName
+            - 'dashboard'
+      DashboardBody: !Join
+        - ''
+        -
+          - '{
+                "widgets": [
+                    {
+                        "type": "text",
+                        "x": 0,
+                        "y": 19,
+                        "width": 24,
+                        "height": 1,
+                        "properties": {
+                            "markdown": "\n# Lambda\n"
+                        }
+                    },
+                    {
+                        "type": "metric",
+                        "x": 0,
+                        "y": 20,
+                        "width": 24,
+                        "height": 6,
+                        "properties": {
+                            "metrics": [
+                                [ "AWS/Lambda", "Throttles", "FunctionName", "'
+          - !Ref LambdaFunction
+          - '", { "stat": "Sum" } ],
+                                [ ".", "Invocations", ".", ".", { "stat": "Sum" } ],
+                                [ ".", "Errors", ".", ".", { "stat": "Sum" } ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": false,
+                            "region": "'
+          - !Ref "AWS::Region"
+          - '",
+                            "title": "'
+          - !Ref LambdaFunction
+          - '"
+                        }
+                    },
+                    {
+                        "type": "metric",
+                        "x": 0,
+                        "y": 26,
+                        "width": 24,
+                        "height": 6,
+                        "properties": {
+                            "view": "timeSeries",
+                            "stacked": false,
+                            "metrics": [
+                                [ "AWS/Lambda", "Duration", "FunctionName", "'
+          - !Ref LambdaFunction
+          - '" ]
+                            ],
+                            "region": "'
+          - !Ref "AWS::Region"
+          - '",
+                            "title": "'
+          - !Join [ '-', [!Ref LambdaFunction, 'Duration'] ]
+          - '"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "x": 0,
+                        "y": 0,
+                        "width": 24,
+                        "height": 1,
+                        "properties": {
+                            "markdown": "\n# Queues\n"
+                        }
+                    },
+                    {
+                        "type": "metric",
+                        "x": 0,
+                        "y": 13,
+                        "width": 24,
+                        "height": 6,
+                        "properties": {
+                            "metrics": [
+                                [ "AWS/SQS", "NumberOfMessagesReceived", "QueueName", "'
+          - !Ref DQ4Name
+          - '", { "stat": "Sum" } ],
+                                [ ".", "NumberOfMessagesSent", ".", ".", { "stat": "Sum" } ],
+                                [ ".", "NumberOfMessagesDeleted", ".", ".", { "stat": "Sum" } ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": false,
+                            "region": "'
+          - !Ref "AWS::Region"
+          - '",
+                            "title": "'
+          - !Ref DQ4Name
+          - '",
+                            "period": 300
+                        }
+                    },
+                    {
+                        "type": "metric",
+                        "x": 0,
+                        "y": 1,
+                        "width": 24,
+                        "height": 6,
+                        "properties": {
+                            "metrics": [
+                                [ "AWS/SQS", "NumberOfMessagesReceived", "QueueName", "'
+          - !Ref DQ2Name
+          - '", { "stat": "Sum" } ],
+                                [ ".", "NumberOfMessagesSent", ".", ".", { "stat": "Sum" } ],
+                                [ ".", "NumberOfMessagesDeleted", ".", ".", { "stat": "Sum" } ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": false,
+                            "region": "'
+          - !Ref "AWS::Region"
+          - '",
+                            "title": "'
+          - !Ref DQ2Name
+          - '",
+                            "period": 300
+                        }
+                    },
+                    {
+                        "type": "metric",
+                        "x": 0,
+                        "y": 7,
+                        "width": 24,
+                        "height": 6,
+                        "properties": {
+                            "metrics": [
+                                [ "AWS/SQS", "NumberOfMessagesReceived", "QueueName", "'
+          - !Ref DQ3Name
+          - '", { "stat": "Sum" } ],
+                                [ ".", "NumberOfMessagesSent", ".", ".", { "stat": "Sum" } ],
+                                [ ".", "NumberOfMessagesDeleted", ".", ".", { "stat": "Sum" } ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": false,
+                            "region": "'
+          - !Ref "AWS::Region"
+          - '",
+                            "title": "'
+          - !Ref DQ3Name
+          - '",
+                            "period": 300
+                        }
+                    },
+                    {
+                        "type": "metric",
+                        "x": 0,
+                        "y": 33,
+                        "width": 24,
+                        "height": 6,
+                        "properties": {
+                            "metrics": [
+                                [ "AWS/SNS", "NumberOfMessagesPublished", "TopicName", "'
+          - !Ref SNSName
+          - '", { "stat": "Sum" } ],
+                                [ ".", "NumberOfNotificationsFailed", ".", ".", { "stat": "Sum" } ],
+                                [ ".", "NumberOfNotificationsDelivered", ".", ".", { "stat": "Sum" } ]
+                            ],
+                            "view": "timeSeries",
+                            "stacked": false,
+                            "region": "'
+          - !Ref "AWS::Region"
+          - '",
+                            "title": "'
+          - !Ref SNSName
+          - '",
+                            "period": 300
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "x": 0,
+                        "y": 32,
+                        "width": 24,
+                        "height": 1,
+                        "properties": {
+                            "markdown": "\n# SNSTopic\n"
+                        }
+                    }
+                ]
+            }'
+
+Outputs:
+  LinkToLambdaFunction:
+    Value: 
+        Fn::Join: ["",["https://",Ref: "AWS::Region",".console.aws.amazon.com/lambda/home?region=",Ref: "AWS::Region","#/functions/",Ref: "LambdaFunction","?tab=graph"]]

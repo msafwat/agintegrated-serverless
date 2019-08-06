@@ -1,0 +1,468 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  LambdaFunctionName: 
+    Type: String
+  QueueArn: 
+    Type: String
+  QueueName:
+    Type: String
+  DeadletterQueueName:
+    Type: String
+  ApiName:
+    Type: String
+  SQSVisibilityTimeout:
+    Type: String
+  LambdaTimeout:
+    Type: Number
+  SNSTopicArn:
+    Type: String
+  LogGroupArn:
+    Type: String
+  FollowingQueueArn:
+    Type: String
+  Stage:
+    Type: String
+  CouchBaseUserName:
+    Type: String
+  CouchBasePassword:
+    Type: String
+  AgIntegratedMasterKey:
+    Type: String
+  AgIntegratedSecret:
+    Type: String
+  S3BucketArn:
+    Type: String
+
+Conditions:
+  IsFollowingQueueNone: !Equals [ !Ref FollowingQueueArn, 'none' ]
+  IsApiNameNone: !Equals [ !Ref ApiName, 'none' ]
+  DoesApiNameExist: !Not [ !Equals [ !Ref ApiName, 'none' ] ]
+
+Resources:
+  LambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Ref LambdaFunctionName
+      Role: !GetAtt [LambdaRole, Arn]
+      Handler: index.handler
+      Runtime: nodejs10.x
+      CodeUri: ./dist/
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Stage 
+          CouchBaseUserName: !Ref CouchBaseUserName
+          CouchBasePassword: !Ref CouchBasePassword
+          AgIntegratedMasterKey: !Ref AgIntegratedMasterKey
+          AgIntegratedSecret: !Ref AgIntegratedSecret
+      Timeout: !Ref LambdaTimeout
+      Events:
+         MySQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !Ref QueueArn
+            BatchSize: 10
+
+  LambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+        # RoleName: !Join
+        #   - '-'
+        #   - - !Ref LambdaFunctionName
+        #     - 'Execution-Role'
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                  - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+        Path: /
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        Policies:
+          - PolicyName: !Join
+            - '-'
+            - - !Ref LambdaFunctionName
+              - 'Execution-Role'
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+              - Effect: Allow
+                Action:
+                  - 'sns:Publish'
+                Resource: !Ref SNSTopicArn 
+              - Effect: Allow
+                Action:
+                  - 'logs:PutLogEvents'
+                  - 'logs:DescribeLogStreams'
+                Resource: !Ref LogGroupArn
+              - Effect: Allow
+                Action:
+                  - 'sqs:*'
+                Resource: !Ref QueueArn
+              - Effect: Allow
+                Action:
+                  - 'sqs:*'
+                Resource: !If
+                  - IsFollowingQueueNone
+                  - !Ref QueueArn # Duplicating permissions on same queue
+                  - !Ref FollowingQueueArn
+              - Effect: Allow
+                Action: 
+                  - 's3:*'
+                Resource: !Join
+                  - ''
+                  - - !Ref S3BucketArn
+                    - '/*'
+
+  # HelperLambdaExecutionRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #       - Effect: Allow
+  #         Principal: {Service: [lambda.amazonaws.com]}
+  #         Action: ['sts:AssumeRole']
+  #     Path: "/"
+  #     ManagedPolicyArns:
+  #     - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # HelperGetTimeoutFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     Handler: index.handler
+  #     Role: !GetAtt HelperLambdaExecutionRole.Arn
+  #     Runtime: nodejs8.10
+  #     InlineCode:  |
+  #         var response = require('cfn-response');
+  #         exports.handler = function(event, context) {
+  #           let result = parseInt(event.ResourceProperties.Num)/4;
+  #           if(result > (15*60)) result = 15*60;
+  #           response.send(event, context, response.SUCCESS, {Value: parseInt(result)});
+  #         };
+          
+  # GetTimeoutValue:
+  #   Type: Custom::TimeoutValue
+  #   Properties:
+  #     ServiceToken: !GetAtt HelperGetTimeoutFunction.Arn
+  #     Num: !Ref SQSVisibilityTimeout
+
+  DashboardNoApi:
+        Type: AWS::CloudWatch::Dashboard
+        Condition: IsApiNameNone
+        Properties: 
+          DashboardName: !Join
+            - '-'
+            - 
+                - !Ref LambdaFunction
+                - 'dashboard'
+          DashboardBody: !Join
+            - ''
+            -
+              - '{
+                    "widgets": [
+                        {
+                            "type": "metric",
+                            "x": 0,
+                            "y": 14,
+                            "width": 24,
+                            "height": 6,
+                            "properties": {
+                                "view": "timeSeries",
+                                "stacked": false,
+                                "metrics": [
+                                    [ "AWS/Lambda", "Throttles", "FunctionName", "'
+              - !Ref LambdaFunction
+              - '" ],
+                                      [ ".", "Invocations", ".", "." ],
+                                      [ ".", "Errors", ".", "." ]
+                                  ],
+                                  "region": "'
+              - !Ref "AWS::Region"
+              - '",
+                                  "title": "'
+              - !Ref LambdaFunction
+              - '"
+                              }
+                          },
+                          {
+                              "type": "metric",
+                              "x": 0,
+                              "y": 20,
+                              "width": 24,
+                              "height": 6,
+                              "properties": {
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "metrics": [
+                                      [ "AWS/Lambda", "Duration", "FunctionName", "'
+              - !Ref LambdaFunction
+              - '" ]
+                                  ],
+                                  "region": "'
+              - !Ref "AWS::Region"
+              - '",
+                                  "title": "'
+              - !Join [ '-', [!Ref LambdaFunction, 'Duration'] ]
+              - '"
+                              }
+                          },
+                          {
+                              "type": "text",
+                              "x": 0,
+                              "y": 13,
+                              "width": 24,
+                              "height": 1,
+                              "properties": {
+                                  "markdown": "\n# Lambda\n"
+                              }
+                          },
+                          {
+                              "type": "text",
+                              "x": 0,
+                              "y": 0,
+                              "width": 24,
+                              "height": 1,
+                              "properties": {
+                                  "markdown": "\n# Queue\n"
+                              }
+                          },
+                          {
+                              "type": "metric",
+                              "x": 0,
+                              "y": 1,
+                              "width": 24,
+                              "height": 6,
+                              "properties": {
+                                  "metrics": [
+                                      [ "AWS/SQS", "NumberOfMessagesReceived", "QueueName", "'
+              - !Ref QueueName
+              - '", { "stat": "Sum" } ],
+                                      [ ".", "NumberOfMessagesSent", ".", ".", { "stat": "Sum" } ],
+                                      [ ".", "NumberOfMessagesDeleted", ".", ".", { "stat": "Sum" } ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "'
+              - !Ref "AWS::Region"
+              - '",
+                                  "title": "'
+              - !Ref QueueName
+              - '"
+                              }
+                          },
+                          {
+                              "type": "metric",
+                              "x": 0,
+                              "y": 7,
+                              "width": 24,
+                              "height": 6,
+                              "properties": {
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "metrics": [
+                                      [ "AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", "'
+              - !Ref DeadletterQueueName
+              - '" ]
+                                  ],
+                                  "region": "'
+              - !Ref "AWS::Region"
+              - '",
+                                  "title": "'
+              - !Ref DeadletterQueueName
+              - '"
+                              }
+                          }
+                      ]
+                  }'
+
+  DashboardWithApi:
+        Type: AWS::CloudWatch::Dashboard
+        Condition: DoesApiNameExist
+        Properties: 
+          DashboardName: !Join
+            - '-'
+            - 
+                - !Ref LambdaFunction
+                - 'dashboard'
+          DashboardBody: !Join
+            - ''
+            -
+              - '{
+                    "widgets": [
+                        {
+                            "type": "metric",
+                            "x": 0,
+                            "y": 21,
+                            "width": 24,
+                            "height": 6,
+                            "properties": {
+                                "view": "timeSeries",
+                                "stacked": false,
+                                "metrics": [
+                                    [ "AWS/Lambda", "Throttles", "FunctionName", "'
+              - !Ref LambdaFunction
+              - '" ],
+                                      [ ".", "Invocations", ".", "." ],
+                                      [ ".", "Errors", ".", "." ]
+                                  ],
+                                  "region": "'
+              - !Ref "AWS::Region"
+              - '",
+                                  "title": "'
+              - !Ref LambdaFunction
+              - '"
+                              }
+                          },
+                          {
+                              "type": "metric",
+                              "x": 0,
+                              "y": 27,
+                              "width": 24,
+                              "height": 6,
+                              "properties": {
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "metrics": [
+                                      [ "AWS/Lambda", "Duration", "FunctionName", "'
+              - !Ref LambdaFunction
+              - '" ]
+                                  ],
+                                  "region": "'
+              - !Ref "AWS::Region"
+              - '",
+                                  "title": "'
+              - !Join [ '-', [!Ref LambdaFunction, 'Duration'] ]
+              - '"
+                              }
+                          },
+                          {
+                              "type": "text",
+                              "x": 0,
+                              "y": 20,
+                              "width": 24,
+                              "height": 1,
+                              "properties": {
+                                  "markdown": "\n# Lambda\n"
+                              }
+                          },
+                          {
+                              "type": "text",
+                              "x": 0,
+                              "y": 7,
+                              "width": 24,
+                              "height": 1,
+                              "properties": {
+                                  "markdown": "\n# Queue\n"
+                              }
+                          },
+                          {
+                              "type": "metric",
+                              "x": 0,
+                              "y": 8,
+                              "width": 24,
+                              "height": 6,
+                              "properties": {
+                                  "metrics": [
+                                      [ "AWS/SQS", "NumberOfMessagesReceived", "QueueName", "'
+              - !Ref QueueName
+              - '", { "stat": "Sum" } ],
+                                      [ ".", "NumberOfMessagesSent", ".", ".", { "stat": "Sum" } ],
+                                      [ ".", "NumberOfMessagesDeleted", ".", ".", { "stat": "Sum" } ]
+                                  ],
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "region": "'
+              - !Ref "AWS::Region"
+              - '",
+                                  "title": "'
+              - !Ref QueueName
+              - '"
+                              }
+                          },
+                          {
+                              "type": "metric",
+                              "x": 0,
+                              "y": 14,
+                              "width": 24,
+                              "height": 6,
+                              "properties": {
+                                  "view": "timeSeries",
+                                  "stacked": false,
+                                  "metrics": [
+                                      [ "AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", "'
+              - !Ref DeadletterQueueName
+              - '" ]
+                                  ],
+                                  "region": "'
+              - !Ref "AWS::Region"
+              - '",
+                                  "title": "'
+              - !Ref DeadletterQueueName
+              - '"
+                              }
+                  },
+                  {
+                      "type": "text",
+                      "x": 0,
+                      "y": 0,
+                      "width": 24,
+                      "height": 1,
+                      "properties": {
+                          "markdown": "\n# Api Gateway\n"
+                      }
+                  },
+                  {
+                      "type": "metric",
+                      "x": 0,
+                      "y": 1,
+                      "width": 12,
+                      "height": 6,
+                      "properties": {
+                          "metrics": [
+                              [ "AWS/ApiGateway", "Count", "ApiName", "'
+              - !Ref ApiName
+              - '", { "stat": "Sum", "period": 60 } ],
+                              [ ".", "5XXError", ".", ".", { "stat": "Sum", "period": 60, "color": "#d62728" } ],
+                              [ ".", "4XXError", ".", ".", { "stat": "Sum", "period": 60, "color": "#ff7f0e" } ]
+                          ],
+                          "view": "timeSeries",
+                          "stacked": false,
+                          "region": "'
+              - !Ref "AWS::Region"
+              - '",
+                          "title": "ApiGatewayHits"
+                      }
+                  },
+                  {
+                      "type": "metric",
+                      "x": 12,
+                      "y": 1,
+                      "width": 12,
+                      "height": 6,
+                      "properties": {
+                          "metrics": [
+                              [ "AWS/ApiGateway", "Latency", "ApiName", "'
+              - !Ref ApiName
+              - '", { "period": 60 } ],
+                              [ ".", "IntegrationLatency", ".", ".", { "period": 60 } ]
+                          ],
+                          "view": "timeSeries",
+                          "stacked": false,
+                          "region": "'
+              - !Ref "AWS::Region"
+              - '",
+                          "title": "ApiGatewayLatencies"
+                      }
+                  }
+              ]
+          }'
+
+Outputs:
+  LinkToLambdaFunction:
+    Value: 
+        Fn::Join: ["",["https://",Ref: "AWS::Region",".console.aws.amazon.com/lambda/home?region=",Ref: "AWS::Region","#/functions/",Ref: "LambdaFunction","?tab=graph"]]

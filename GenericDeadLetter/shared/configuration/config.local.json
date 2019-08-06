@@ -1,0 +1,47 @@
+{
+  "policies": {
+    "defaultAgIntegratedRetryPolicy": {
+      "timeout": 300000,
+      "retry": 2,
+      "interval": 5000
+    },
+    "defaultSQSRetyPolicy": {
+      "timeout": 5000,
+      "retry": 3,
+      "interval": 1000
+    },
+    "defaultCouchBaseRetyPolicy": {
+      "timeout": 30000,
+      "retry": 2,
+      "interval": 5000
+    }
+  },
+
+  "agIntegratedConfig": {
+    "apiKey": "",
+    "apiSecret": "",
+    "baseurl": "https://sandbox.onsiteag.com"
+  },
+
+  "couchbaseConfig": {
+    "URL": "couchbase://localhost",
+    "clusterUserName": "eman.fahmy",
+    "clusterPassword": "123456",
+    "bucketName": "agintegration-dev"
+  },
+
+  "failureCount": 3,
+
+  "cloudwatchConfig": {
+    "commonLogGroupName": "AgIntegrationLog",
+    "fileURIsLogStream": "FileURIs"
+  },
+
+  "snsConfig": {
+    "snsTopicARN": "arn:aws:sns:us-east-2:142985572146:AgIntegratedCommonLog"
+  },
+
+  "sqsConfig": {
+    "fileURIsQueue": "https://sqs.us-east-2.amazonaws.com/142985572146/files-uris"
+  }
+}

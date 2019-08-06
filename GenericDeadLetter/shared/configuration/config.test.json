@@ -1,0 +1,47 @@
+{
+  "policies": {
+    "defaultAgIntegratedRetryPolicy": {
+      "timeout": 300000,
+      "retry": 2,
+      "interval": 5000
+    },
+    "defaultSQSRetyPolicy": {
+      "timeout": 5000,
+      "retry": 3,
+      "interval": 1000
+    },
+    "defaultCouchBaseRetyPolicy": {
+      "timeout": 30000,
+      "retry": 2,
+      "interval": 5000
+    }
+  },
+
+  "agIntegratedConfig": {
+    "apiKey": "",
+    "apiSecret": "",
+    "baseurl": "https://sandbox.onsiteag.com"
+  },
+
+  "couchbaseConfig": {
+    "URL": "couchbase://rr-relax.landdb.com",
+    "clusterUserName": "",
+    "clusterPassword": "",
+    "bucketName": "agintegration-dev"
+  },
+
+  "failureCount": 3,
+
+  "cloudwatchConfig": {
+    "commonLogGroupName": "AgIntegrationLog",
+    "fileURIsLogStream": "FileURIs"
+  },
+
+  "snsConfig": {
+    "snsTopicARN": "arn:aws:sns:us-east-1:981913140575:AgIntegratedCommonLog"
+  },
+
+  "sqsConfig": {
+    "fileURIsQueue": "https://sqs.us-east-1.amazonaws.com/981913140575/files-uris-test"
+  }
+}
