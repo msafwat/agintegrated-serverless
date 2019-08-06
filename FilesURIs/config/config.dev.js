@@ -20,8 +20,8 @@ const policies = {
 
 // #endregion
 const agIntegratedConfig = {
-  apiKey: process.env.AgIntegratedMasterKey,
-  apiSecret: process.env.AgIntegratedSecret,
+  apiKey: "1891d7f9-c6be-407b-b8e5-7dc709c747c4", //process.env.AgIntegratedMasterKey,
+  apiSecret: "84c904e5-3460-49aa-aaac-a6acfbcaa982", //process.env.AgIntegratedSecret,
   baseurl: "https://sandbox.onsiteag.com"
 };
 

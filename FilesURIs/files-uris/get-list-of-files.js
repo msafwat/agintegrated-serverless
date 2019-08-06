@@ -1,13 +1,15 @@
 const telematics = require("../services/apis/agintegrated-telematics");
-const Logger = require("../shared/logger");
 const STEP = "Get List of Files URIs";
 
-async function getListOfFiles(lastExecutionTime, params) {
+async function getListOfFiles(lastExecutionTime, params, services) {
+  const { config, logger, couchbase, retry } = services;
+
   let listOfFilesOfAllNodes = [];
   try {
     //Get Avaliable telematic node for this stub user
     let telematicNodes = await telematics.ListAvailableTelematics(
-      params.agIntegratedStubKey
+      params.agIntegratedStubKey,
+      services
     );
 
     // For each node
@@ -30,7 +32,8 @@ async function getListOfFiles(lastExecutionTime, params) {
           nodeId,
           params.startDateTime,
           lastExecutionTime,
-          params.agIntegratedStubKey
+          params.agIntegratedStubKey,
+          config
         );
 
         listOfFiles.map(function(entry) {
@@ -43,12 +46,7 @@ async function getListOfFiles(lastExecutionTime, params) {
       }
     }
   } catch (exception) {
-    Logger.error(
-      STEP,
-      JSON.stringify({ error: exception.message, stack: exception.stack }),
-      params
-    );
-
+    logger.logError(exception, STEP, params);
     throw exception;
   }
 

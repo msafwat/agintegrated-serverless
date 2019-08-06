@@ -1,16 +1,22 @@
 const apiUtilities = require("./shared/utilities");
 const callAPIWithRetry = require("./shared/call-api-with-retry");
-const {
-  policies,
-  agIntegratedConfig
-} = require("../../shared/configuration/configure");
 
-async function ListAvailableTelematics(userKey) {
+async function ListAvailableTelematics(userKey, services) {
+  const { config } = services;
+
+  const policies = config.policies;
+  const agIntegratedConfig = config.agIntegratedConfig;
+
   let url = `${agIntegratedConfig.baseurl}/api/TelematicsNode/Tree`;
   let method = "GET";
   let result;
   try {
-    let header = apiUtilities.generateRequestHeaders(method, url, userKey);
+    let header = apiUtilities.generateRequestHeaders(
+      method,
+      url,
+      userKey,
+      agIntegratedConfig
+    );
 
     result = await callAPIWithRetry(
       { url: url, method: method, header: header },
@@ -28,13 +34,17 @@ async function ListAvailableFilesFromTelematicNode(
   nodeID,
   created_before_date,
   created_after_date,
-  userKey
+  userKey,
+  config
 ) {
+  const { agIntegratedConfig, policies } = config;
+
   let date_created_before_date = new Date(created_before_date);
   let date_created_after_date = new Date(created_after_date);
-  if (date_created_before_date > date_created_after_date) {
+
+  if (date_created_before_date < date_created_after_date) {
     date_created_before_date.setDate(date_created_before_date.getDate() - 1); //subtract one day
-  } else if (date_created_before_date < date_created_after_date) {
+  } else if (date_created_before_date > date_created_after_date) {
     throw new Error("Error: created_before_date > created_after_date");
   }
 
@@ -52,7 +62,12 @@ async function ListAvailableFilesFromTelematicNode(
   let method = "GET";
   let result;
   try {
-    let header = apiUtilities.generateRequestHeaders(method, url, userKey);
+    let header = apiUtilities.generateRequestHeaders(
+      method,
+      url,
+      userKey,
+      agIntegratedConfig
+    );
 
     result = await callAPIWithRetry(
       { url: url, method: method, header: header },

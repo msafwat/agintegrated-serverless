@@ -1,9 +1,6 @@
 const crypto = require("crypto");
 
-const agIntegratedConfig = require("../../../shared/configuration/configure")
-  .agIntegratedConfig;
-
-function generateRequestHeaders(method, url, user_key) {
+function generateRequestHeaders(method, url, user_key, agIntegratedConfig) {
   let unix_time = Math.floor(new Date().getTime() / 1000);
   let path = url
     .toString()

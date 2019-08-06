@@ -1,47 +1,31 @@
-const couchbase = require("../services/couchbase/couchbase-utils");
-const config = require("../shared/configuration/configure");
-//const config = require("../shared/Config/config");
-const Logger = require("../shared/logger");
-
-const couchbaseConfig = config.couchbaseConfig;
-//const couchBaseRetrypolicy = config.policies.defaultCouchBaseRetyPolicy;
 const STEP = "Get Last Execution From CouchBase";
 
-async function getLastExecutionFromDB(params) {
+exports.getLastExecution = async (services, data) => {
+  const { config, logger, couchbase, retry } = services;
+
+  const bucketName = config.COUCHBASE.BUCKET;
+  const retryPolicy = config.policies.defaultCouchBaseRetryPolicy;
+
   try {
-    const bucketName = `\`${couchbaseConfig.bucketName}\``;
-    const query = `select LastExecution from ${bucketName} where meta().id like "checkpoint::${
-      params.dataSource
+    const query = `SELECT LastExecution FROM \`${bucketName}\` WHERE META().id LIKE "checkpoint::${
+      data.dataSource
     }"`;
 
-    //let key = `checkpoint::${params.dataSource}`;
-    console.log("Start getLastExecutionFromDB/executeQueryWithRetry");
-    /*let row = await couchbase.executeQueryWithRetry({
-      queryType: couchbase.queryTypes.Get,
-      key
-    });*/
-    let row = await couchbase.executeQueryWithRetry({
-      queryType: couchbase.queryTypes.Query,
-      query
-    });
-    console.log(
+    logger.logInfo("Start getLastExecutionFromDB/executeQueryWithRetry");
+    let row = await retry.retryWithCount(async () => {
+      return await couchbase.executeQuery(query);
+    }, retryPolicy);
+    logger.logInfo(
       `End getLastExecutionFromDB/executeQueryWithRetry ${row.LastExecution}`
     );
+
     if (row[0]) {
       return row[0].LastExecution;
     } else {
       return undefined;
     }
   } catch (exception) {
-    console.log(`Error getLastExecutionFromDB ${exception}`);
-
-    Logger.error(
-      STEP,
-      JSON.stringify({ error: exception.message, stack: exception.stack }),
-      params
-    );
+    logger.logException(err, STEP, data);
     throw exception;
   }
-}
-
-module.exports = getLastExecutionFromDB;
+};

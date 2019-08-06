@@ -1,6 +1,6 @@
-const local = require("./config.local.json");
+const local = require("./config.local.json.js");
 //const dev = require("./config.dev.json");
-const test = require("./config.test.json");
+const test = require("./config.test.json.js");
 const develop = require("./config.develop.js");
 
 if (process.env.ENVIRONMENT === "local") {

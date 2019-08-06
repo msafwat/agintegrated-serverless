@@ -1,12 +1,11 @@
 const axios = require("axios");
 //const sleep = require("sleep");
-const policies = require("../../../shared/configuration/configure").policies;
 
 let axiosInstance;
 
 async function call_API_Axios_with_retry(
   { url, method, data, header },
-  retry_policy = policies.defaultAgIntegratedRetryPolicy
+  retry_policy
 ) {
   let timeout = retry_policy.timeout;
   let retries_number = retry_policy.retry;
