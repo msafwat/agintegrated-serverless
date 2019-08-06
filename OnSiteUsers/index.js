@@ -14,6 +14,7 @@ async function handler(event, context) {
   return app.output;
 }
 
+// ********** Don't forget to remove **********
 handler(
   {
     id: "cdc73f9d-aea9-11e3-9d5a-835b769c0d9c",
@@ -29,40 +30,3 @@ handler(
 )
   .then(x => console.log(x))
   .catch(x => console.log(x));
-
-// const onsiteUsers = require("./onsite-users/onsite-users-handler");
-
-// const FailureError = require("./shared/custom-errors");
-// const Logger = require("./shared/logger");
-// const STEP = "Event Validation";
-
-// let funcParams;
-// try {
-//   // #region Source Validation
-//   funcParams = {
-//     jobId: context.awsRequestId,
-//     startDateTime: event.time
-//   };
-
-//   validateEvent(event);
-
-//   // #endregion
-
-//   //Call onsite-users Business Handler
-//   await onsiteUsers(funcParams);
-// } catch (error) {
-//   if (error instanceof FailureError) {
-//     await Logger.failure(
-//       STEP,
-//       JSON.stringify({ error: error.message, stack: error.stack }),
-//       funcParams
-//     );
-//   } else {
-//     Logger.error(
-//       STEP,
-//       JSON.stringify({ error: error.message, stack: error.stack }),
-//       funcParams
-//     );
-//     //throw error;
-//   }
-// }
