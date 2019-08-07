@@ -1,6 +1,6 @@
-# AGIntgrator
+# AGIntegrated
 
-AGIntgrator is...
+AGIntegrated Serverless is the service for...
 
 ## How to create a new MicroService?
 
