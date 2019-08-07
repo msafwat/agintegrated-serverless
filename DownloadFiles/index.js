@@ -1,61 +1,52 @@
 "use strict";
 
-const downloader = require("./downloader/downloader-handler");
+//const SQSEventAppBuilder = require("./opt/SQSEventAppBuilder");
+const SQSEventAppBuilder = require("../services/SQSEventAppBuilder");
 
-const FailureError = require("./shared/custom-errors");
-const Logger = require("./shared/logger");
-const STEP = "Event Validation";
+//exports.handler = async (event, context) => {
+async function handler(event, context) {
+  const app = new SQSEventAppBuilder(event, context, __dirname);
+  app.addResiliencyService();
+  app.addCouchbaseService();
+  app.addSQSService();
+  app.decorateLoggerWithNotifcation();
+  await app.run();
 
-exports.handler = async event => {
-  let funcParams;
-  try {
-    // #region Source Validation
-
-    validateEvent(event);
-
-    // #endregion
-
-    let messagebody = JSON.parse(event.Records[0].body);
-    //let messagebody = event.Records[0].body;
-
-    funcParams = {
-      jobId: messagebody.jobId,
-      startDateTime: messagebody.startDateTime,
-      dataSource: messagebody.dataSource,
-      agIntegratedStubKey: messagebody.agIntegratedStubKey,
-      nodeId: messagebody.nodeId,
-      fileId: messagebody.fileId,
-      hashKey: messagebody.hashKey,
-      fileName: messagebody.fileName,
-      failedCount: messagebody.failedCount
-    };
-
-    //Call downloader Business Handler
-    await downloader(funcParams);
-  } catch (error) {
-    if (error instanceof FailureError) {
-      await Logger.failure(
-        STEP,
-        JSON.stringify({ error: error.message, stack: error.stack }),
-        funcParams
-      );
-    } else {
-      Logger.error(
-        STEP,
-        JSON.stringify({ error: error.message, stack: error.stack }),
-        funcParams
-      );
-    }
-    throw error;
-  }
-};
-
-function validateEvent(event) {
-  if (
-    !event.Records ||
-    event.Records.length < 1 ||
-    event.Records[0].eventSource !== "aws:sqs"
-  ) {
-    throw new FailureError("invalid event");
-  }
+  return app.output;
 }
+
+handler(
+  {
+    Records: [
+      {
+        messageId: "19dd0b57-b21e-4ac1-bd88-01bbb068cb78",
+        receiptHandle: "MessageReceiptHandle",
+        body: {
+          jobId: "Job-Id",
+          startDateTime: "123",
+          dataSource: "dataSource",
+          agIntegratedStubKey: "7484aaa8-6cb1-4669-9fa7-237f9473481a",
+          fileId: "E632DD3A-105E-43E2-9F2B-A4DA0551AA93",
+          nodeId: "7474",
+          hashKey: "Hash-Key",
+          fileName: "test.agdata",
+          failedCount: 0
+        },
+        attributes: {
+          ApproximateReceiveCount: "1",
+          SentTimestamp: "1523232000000",
+          SenderId: "123456789012",
+          ApproximateFirstReceiveTimestamp: "1523232000001"
+        },
+        messageAttributes: {},
+        md5OfBody: "7b270e59b47ff90a553787216d55d91d",
+        eventSource: "aws:sqs",
+        eventSourceARN: "arn:aws:sqs:us-east-1:123456789012:MyQueue",
+        awsRegion: "us-east-1"
+      }
+    ]
+  },
+  { awsRequestId: "12345" }
+)
+  .then(x => console.log(x))
+  .catch(x => console.log(x));

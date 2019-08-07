@@ -18,10 +18,18 @@ module.exports = class CloudWatchEventAppBuilder extends AppBuilder {
   }
 
   handlerFactory() {
+    this.validateEvent();
+
     const handlerFile = fs
       .readdirSync(this.dir)
       .filter(f => f.endsWith("handler.js"))[0];
 
     return require(`${this.dir}/${handlerFile}`).handler;
+  }
+
+  validateEvent() {
+    if (this.event && this.event.source !== "aws.events") {
+      throw new Error("invalid event");
+    }
   }
 };

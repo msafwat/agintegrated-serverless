@@ -14,6 +14,7 @@ exports.handler = async (services, data) => {
   try {
     //Get user stub key from SQS
     let messageBody = data[0];
+
     let agIntegratedStubKey = messageBody.agIntegratedStubKey;
     let dataSource = messageBody.dataSource;
     let jobId = messageBody.jobId;

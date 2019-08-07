@@ -1,8 +1,7 @@
-const FailureError = require("../shared/custom-errors");
-const Logger = require("../shared/logger");
+const FailureError = require("../errors/FailureError");
 const STEP = "Validate Event parameters";
 
-async function validateEventParams(funcParams) {
+async function validateEventParams(funcParams, logger) {
   if (
     !(
       funcParams.jobId &&
@@ -17,7 +16,7 @@ async function validateEventParams(funcParams) {
     let errorMessage =
       "missing one or more of event paramaters (jobId, startDateTime, dataSource, agIntegratedStubKey, nodeId, fileId, hashKey, fileName)";
 
-    await Logger.error(STEP, errorMessage, funcParams);
+    await logger.logError(errorMessage, STEP, funcParams);
 
     throw new FailureError(errorMessage);
   }

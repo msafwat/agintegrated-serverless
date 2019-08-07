@@ -14,6 +14,7 @@ let cluster;
 let bucket;
 
 async function configureCouchbase() {
+  console.log(couchbaseConfig.URL);
   cluster = new couchbase.Cluster(couchbaseConfig.URL);
   await cluster.authenticate(
     couchbaseConfig.clusterUserName,

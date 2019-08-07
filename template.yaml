@@ -83,6 +83,19 @@ Resources:
 
 
  
+
+  # API Gateway
+  # SustainabilityApi:
+  #   Type: AWS::Serverless::Api
+  #   Properties:
+  #     StageName: !Ref Stage
+  #     DefinitionBody:
+  #       Fn::Transform:
+  #         Name: AWS::Include
+  #         Parameters:
+  #           Location: ./services/configurations/apiGateway.openapi.json
+
+
   # # CloudWatch
   # AlarmTopic:
   #   Type: AWS::SNS::Topic

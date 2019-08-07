@@ -1,207 +1,365 @@
-# sam-app
+# AGIntgrator
 
-This is a sample template for sam-app - Below is a brief explanation of what we have generated for you:
+AGIntgrator is...
 
-```bash
-.
-├── README.MD                   <-- This instructions file
-├── event.json                  <-- API Gateway Proxy Integration event payload
-├── hello-world                 <-- Source code for a lambda function
-│   └── app.js                  <-- Lambda function code
-│   └── package.json            <-- NodeJS dependencies and scripts
-│   └── tests                   <-- Unit tests
-│       └── unit
-│           └── test-handler.js
-├── template.yaml               <-- SAM template
-```
+## How to create a new MicroService?
 
-## Requirements
-
-* AWS CLI already configured with Administrator permission
-* [NodeJS 10.10+ installed](https://nodejs.org/en/download/releases/)
-
-* [Docker installed](https://www.docker.com/community-edition)
-
-## Setup process
-
-### Local development
-
-**Invoking function locally using a local sample payload**
-
-```bash
-sam local invoke HelloWorldFunction --event event.json
-```
- 
-**Invoking function locally through local API Gateway**
-
-```bash
-sam local start-api
-```
-
-If the previous command ran successfully you should now be able to hit the following local endpoint to invoke your function `http://localhost:3000/hello`
-
-**SAM CLI** is used to emulate both Lambda and API Gateway locally and uses our `template.yaml` to understand how to bootstrap this environment (runtime, where the source code is, etc.) - The following excerpt is what the CLI will read in order to initialize an API and its routes:
+### Step 1: Add a new Function in template.yaml.
 
 ```yaml
-...
-Events:
-    HelloWorld:
-        Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-        Properties:
-            Path: /hello
-            Method: get
+# Microservices
+CropRotationsFunction:
+  Type: AWS::Serverless::Function
+  Properties:
+    FunctionName: CropRotationsFunction
+    CodeUri: cropRotations/
 ```
 
-## Packaging and deployment
+**Note: CodeUri is the path for your microservice, it should be under the root directory of our app**
 
-AWS Lambda NodeJS runtime requires a flat folder with all dependencies including the application. SAM will use `CodeUri` property to know where to look up for both application and dependencies:
+### step 2: Add AppBuilder to your index.js.
 
-```yaml
-...
-    HelloWorldFunction:
-        Type: AWS::Serverless::Function
-        Properties:
-            CodeUri: hello-world/
-            ...
+/cropRotations/index.js
+
+```javascript
+const AppBuilder = require("/opt/AppBuilder");
+
+exports.handler = async (event, context) => {
+  const app = new AppBuilder(event, context, __dirname);
+  app.addAxiosService();
+  await app.run();
+
+  return app.output;
+};
 ```
 
-Firstly, we need a `S3 bucket` where we can upload our Lambda functions packaged as ZIP before we deploy anything - If you don't have a S3 bucket to store code artifacts then this is a good time to create one:
+AppBuilder will handle routing, service injection and data mapping for you.
+
+So far, we support those our services:
+
+- app.addConfigService() // By defualt injected
+- app.addLoggerService() // By defualt injected
+- app.addResponseService() // By defualt injected
+- app.addAxiosService()
+- app.addCouchbaseService()
+- app.addS3Service()
+
+#### Add Middleware Service
+
+If you like to inject a custom service, you can use addService middleware.
+
+```javascript
+app.addService(services => {
+  const { config, logger, res, http } = services;
+
+  // Some logic here.
+  const ssurgoService = new ssurgoService(); // Instance of your custom service.
+
+  return { key: "ssurgo", service: ssurgoService };
+});
+```
+
+```javascript
+// Now you can use it from your component.
+exports.handler = async (services, data) => {
+  const { config, logger, res, ssurgo } = services;
+};
+```
+
+### Step 3: Create your component(s).
+
+/cropRotations/retrieveCropRotations/index.js
+
+```javascript
+exports.handler = async (services, data) => {
+  const { config, logger, res, http } = services;
+
+  let result = await http.get(config.FTM.URL, config.FTM.AUTHORRIZATION);
+
+  return res.ok(JSON.stringify(result.data));
+};
+```
+
+### Step 4: Add your endpoint in apiGateway.openapi.json.
+
+/services/configurations/apiGateway.openapi.json
+
+```json
+{
+  "paths": {
+    "/CropRotations": {
+      "get": {
+        "operationId": "retrieveCropRotations",
+        "summary": "Returns FTM crop rotations.",
+        "tags": ["Crop Rotation"],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "response": {
+                    "value": {}
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error.",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "response": {
+                    "value": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "okta_authorizer": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "uri": "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:004443144924:function:CropRotationsFunction/invocations",
+          "responses": {
+            "default": {
+              "statusCode": "200"
+            }
+          },
+          "passthroughBehavior": "when_no_match",
+          "httpMethod": "POST",
+          "contentHandling": "CONVERT_TO_TEXT",
+          "type": "aws_proxy"
+        }
+      }
+    }
+  }
+}
+```
+
+**Important: operationId with component name like "operationId": "retrieveCropRotations", this how we route your comming request.**
+
+**Second note set "x-amazon-apigateway-integration": { "uri": "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:004443144924:function:CropRotationsFunction/invocations", just change the CropRotationsFunction.**
+
+**Last thing don't forget to set "security": [{ "okta_authorizer": [] } ]**
+
+### Step 5: Add your private config, if needed.
+
+/cropRotations/config/config.js
+
+```javascript
+"use strict";
+
+module.exports = {
+  FTM: {
+    URL:
+      "https://api.fieldtomarket.org/v3/ReferenceData/TillageManagementTemplates",
+    AUTHORRIZATION: "Bearer EHo4NLXpxvfO2V5hMViMyEUroII8fo"
+  }
+};
+```
+
+**Note: when you recieve the config object from service it will automatically combine the shared and private configs for you.**
+
+**Shared config: /services/configurations/sharedConfig.js**
+
+### Services Overview
+
+#### Logger Service
+
+logger will be injected to your component by default, down here is how to use it.
+
+```javascript
+exports.handler = async (services, data) => {
+  const { logger } = services;
+
+  logger.logInfo("Info Message...");
+  logger.logWarning("Warning Message");
+  logger.logError("Error Message...");
+  logger.logException(err);
+};
+```
+
+log message: { apiRequestId, lambdaRequestId, correlationId, logType, message }
+
+#### Response Service
+
+```javascript
+exports.handler = async (services, data) => {
+  const { res } = services;
+
+  return res.ok(JSON.stringify({ id: 1 }));
+  return res.badRequest();
+  return res.notFound();
+  return res.internalServerError(err);
+};
+```
+
+#### Configuration Service
+
+```javascript
+exports.handler = async (services, data) => {
+  const { config } = services;
+
+  let ftmUrl = config.FTM.URL.
+};
+```
+
+#### Couchbase Service
+
+```javascript
+exports.handler = async (services, data) => {
+  const { couchbase } = services;
+
+  let key = "Assessment::xxxx::yyyy";
+  let data = { name: "My Assessment" };
+
+  await couchbase.insert(key, data);
+  await couchbase.replace(key, data);
+  await couchbase.read(key);
+  await couchbase.keyStartsWith("Assessment::xxxx");
+  await couchbase.executeQuery(
+    "SELECT * FROM `bucket` data WHERE META().id LIKE '%::yyyy'"
+  );
+};
+```
+
+#### AppBuilder extension
+
+You can extend AppBuilder to support differnet Event Sources. like SQS Events and CloudWatch Events, so on.
+
+Sample of SQSEventAppBuilder:
+
+```javascript
+const fs = require("fs");
+const AppBuilder = require("./AppBuilder");
+
+module.exports = class SQSEventAppBuilder extends AppBuilder {
+  constructor(event, context, dir, loadDefaultServices = true) {
+    super(event, context, dir, loadDefaultServices);
+  }
+
+  constructData() {
+    this.data = this.event.Records.map(r => r.body);
+  }
+
+  setCorrelationId() {
+    this.correlationId = this.context.awsRequestId;
+  }
+
+  handlerFactory() {
+    this.validateEvent();
+
+    const handlerFile = fs
+      .readdirSync(this.dir)
+      .filter(f => f.endsWith("handler.js"))[0];
+
+    return require(`${this.dir}/${handlerFile}`).handler;
+  }
+
+  validateEvent() {
+    if (
+      !this.event.Records ||
+      this.event.Records.length < 1 ||
+      this.event.Records[0].eventSource !== "aws:sqs"
+    ) {
+      throw new Error("invalid event");
+    }
+  }
+};
+```
+
+- constructData(). define the data building/mapping you like. for example Api Gateway mapp data from Query String, Path, Body and so on, however SQS events map from records.body.
+- setCorrelationId(). generate or pass or map Correlation Id. Just note: I still not support Correlation Id passing from service to another.
+- handlerFactory(). this where the handler loader should work. in Api Gateway it's the router that map the incomming request operationId to the handler. howerver in SQS we map it staticly to neighbour handler. Later I will support multi factory injection.
+
+So far we support those Builders:
+
+- AppBuilder (Default Api Gateway)
+- CloudWatchEventAppBuilder
+- SQSEventAppBuilder
+
+## SAM Commands
 
 ```bash
-aws s3 mb s3://BUCKET_NAME
+$ sam validate
+
+$ sam build
+
+$ sam local invoke "CropRotationsFunction" -e "./cropRotations/addCropRotation/event.json"
+
+$ sam local start-api
+
+$ sam package --output-template-file packaged.yaml --s3-bucket sus-package-test
+
+$ sam deploy --template-file packaged.yaml --stack-name sustainability --capabilities CAPABILITY_IAM --region us-east-1
 ```
 
-Next, run the following command to package our Lambda function to S3:
+## SAM Debug
 
 ```bash
-sam package \
-    --output-template-file packaged.yaml \
-    --s3-bucket REPLACE_THIS_WITH_YOUR_S3_BUCKET_NAME
+$ sam local invoke -e "./cropRotations/retrieveCropRotations/event.json" --debug-port 5858 CropRotationsFunction
+
+2019-07-27 20:41:25 Invoking index.handler (nodejs10.x)
+2019-07-27 20:41:25 Found credentials in shared credentials file: ~/.aws/credentials
+2019-07-27 20:41:25 DependenciesLayer is a local Layer in the template
+2019-07-27 20:41:25 ServicesLayer is a local Layer in the template
+2019-07-27 20:41:25 Building image...
+2019-07-27 20:41:34 Requested to skip pulling images ...
+
+2019-07-27 20:41:34 Mounting /Users/msafwat/Projects/sustainability-backend/cropRotations as /var/task:ro,delegated inside runtime container
+Debugger listening on ws://0.0.0.0:5858/b7c69eea-7644-4135-837d-0af4010d603f
+For help, see: https://nodejs.org/en/docs/inspector
 ```
 
-Next, the following command will create a Cloudformation Stack and deploy your SAM resources.
+.vscode/launch.json
 
-```bash
-sam deploy \
-    --template-file packaged.yaml \
-    --stack-name sam-app \
-    --capabilities CAPABILITY_IAM
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Crop Rotations",
+      "type": "node",
+      "request": "attach",
+      "address": "localhost",
+      "port": 5858,
+      // From the sam init example, it would be "${workspaceRoot}/hello_world"
+      "localRoot": "${workspaceRoot}/cropRotations",
+      "remoteRoot": "/var/task",
+      "protocol": "inspector",
+      "stopOnEntry": false
+    },
+    {
+      "name": "Debug Assessment",
+      "type": "node",
+      "request": "attach",
+      "address": "localhost",
+      "port": 5859,
+      // From the sam init example, it would be "${workspaceRoot}/hello_world"
+      "localRoot": "${workspaceRoot}/assessment",
+      "remoteRoot": "/var/task",
+      "protocol": "inspector",
+      "stopOnEntry": false
+    },
+    {
+      "name": "Debug Soil Characteristics",
+      "type": "node",
+      "request": "attach",
+      "address": "localhost",
+      "port": 5860,
+      // From the sam init example, it would be "${workspaceRoot}/hello_world"
+      "localRoot": "${workspaceRoot}/soilCharacteristics",
+      "remoteRoot": "/var/task",
+      "protocol": "inspector",
+      "stopOnEntry": false
+    }
+  ]
+}
 ```
 
-> **See [Serverless Application Model (SAM) HOWTO Guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-quick-start.html) for more details in how to get started.**
-
-After deployment is complete you can run the following command to retrieve the API Gateway Endpoint URL:
-
-```bash
-aws cloudformation describe-stacks \
-    --stack-name sam-app \
-    --query 'Stacks[].Outputs[?OutputKey==`HelloWorldApi`]' \
-    --output table
-``` 
-
-## Fetch, tail, and filter Lambda function logs
-
-To simplify troubleshooting, SAM CLI has a command called sam logs. sam logs lets you fetch logs generated by your Lambda function from the command line. In addition to printing the logs on the terminal, this command has several nifty features to help you quickly find the bug.
-
-`NOTE`: This command works for all AWS Lambda functions; not just the ones you deploy using SAM.
-
-```bash
-sam logs -n HelloWorldFunction --stack-name sam-app --tail
-```
-
-You can find more information and examples about filtering Lambda function logs in the [SAM CLI Documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-logging.html).
-
-## Testing
-
-We use `mocha` for testing our code and it is already added in `package.json` under `scripts`, so that we can simply run the following command to run our tests:
-
-```bash
-cd hello-world
-npm install
-npm run test
-```
-
-## Cleanup
-
-In order to delete our Serverless Application recently deployed you can use the following AWS CLI Command:
-
-```bash
-aws cloudformation delete-stack --stack-name sam-app
-```
-
-## Bringing to the next level
-
-Here are a few things you can try to get more acquainted with building serverless applications using SAM:
-
-### Learn how SAM Build can help you with dependencies
-
-* Uncomment lines on `app.js`
-* Build the project with ``sam build --use-container``
-* Invoke with ``sam local invoke HelloWorldFunction --event event.json``
-* Update tests
-
-### Create an additional API resource
-
-* Create a catch all resource (e.g. /hello/{proxy+}) and return the name requested through this new path
-* Update tests
-
-### Step-through debugging
-
-* **[Enable step-through debugging docs for supported runtimes]((https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-using-debugging.html))**
-
-Next, you can use AWS Serverless Application Repository to deploy ready to use Apps that go beyond hello world samples and learn how authors developed their applications: [AWS Serverless Application Repository main page](https://aws.amazon.com/serverless/serverlessrepo/)
-
-# Appendix
-
-## Building the project
-
-[AWS Lambda requires a flat folder](https://docs.aws.amazon.com/lambda/latest/dg/nodejs-create-deployment-pkg.html) with the application as well as its dependencies in a node_modules folder. When you make changes to your source code or dependency manifest,
-run the following command to build your project local testing and deployment:
-
-```bash
-sam build
-```
-
-If your dependencies contain native modules that need to be compiled specifically for the operating system running on AWS Lambda, use this command to build inside a Lambda-like Docker container instead:
-```bash
-sam build --use-container
-```
-
-By default, this command writes built artifacts to `.aws-sam/build` folder.
-
-## SAM and AWS CLI commands
-
-All commands used throughout this document
-
-```bash
-# Invoke function locally with event.json as an input
-sam local invoke HelloWorldFunction --event event.json
-
-# Run API Gateway locally
-sam local start-api
-
-# Create S3 bucket
-aws s3 mb s3://BUCKET_NAME
-
-# Package Lambda function defined locally and upload to S3 as an artifact
-sam package \
-    --output-template-file packaged.yaml \
-    --s3-bucket REPLACE_THIS_WITH_YOUR_S3_BUCKET_NAME
-
-# Deploy SAM template as a CloudFormation stack
-sam deploy \
-    --template-file packaged.yaml \
-    --stack-name sam-app \
-    --capabilities CAPABILITY_IAM
-
-# Describe Output section of CloudFormation stack previously created
-aws cloudformation describe-stacks \
-    --stack-name sam-app \
-    --query 'Stacks[].Outputs[?OutputKey==`HelloWorldApi`]' \
-    --output table
-
-# Tail Lambda function Logs using Logical name defined in SAM Template
-sam logs -n HelloWorldFunction --stack-name sam-app --tail
-```
-
-**NOTE**: Alternatively this could be part of package.json scripts section.
+**Note: SAM has a bug here, it loads from /opt/node_module and can't recognize /opt/nodejs/node_module like invoke local, start api and package/deploy. So just for now you can copy node_module under dependencies folder but don't forget to remove it before deploy.**
